@@ -4,6 +4,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from hashlib import sha256
+import os
 
 def generate(local_key: bytes, private_path: str, public_path: str):
   print('Generating key pair')
@@ -32,8 +33,21 @@ def main():
   pwd_hash = sha256(password.encode('utf-8'))
   local_key = pwd_hash.digest()
 
-  generate(local_key, './keys/private/A.key', './keys/public/A.pub')
-  generate(local_key, './keys/private/B.key', './keys/public/B.pub')
+  private_path = os.path.join('./keys', 'private')
+  public_path = os.path.join('./keys', 'public')
+  os.makedirs(private_path, exist_ok=True)
+  os.makedirs(public_path, exist_ok=True)
+
+  generate(
+    local_key,
+    os.path.join(private_path, 'A.key'),
+    os.path.join(public_path, 'A.pub')
+  )
+  generate(
+    local_key,
+    os.path.join(private_path, 'B.key'),
+    os.path.join(public_path, 'B.pub')
+  )
 
 
 if __name__ == '__main__':
