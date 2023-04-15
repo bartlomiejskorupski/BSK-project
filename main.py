@@ -1,35 +1,34 @@
 from guizero import App, TextBox, Text, PushButton, Box, error
-from encryption import is_password_valid
+from encryption import decrypt_private_key
 
-def validate_password():
+def log_in():
   global pwd_tb
   entered_pwd = pwd_tb.value
   pwd_tb.value = ''
 
-  if is_password_valid(entered_pwd):
+  private_key = decrypt_private_key(entered_pwd)
+  if private_key:
     global pwd_box
     pwd_box.disable()
     pwd_box.visible = False
   else:
     error('Error', 'Invalid password. Try again.')
 
-
 def on_key_press(event_data):
   global app, pwd_tb, pwd_box
   if event_data.key == '\r' and pwd_box.visible == True:
-    validate_password()
-
+    log_in()
 
 def main():
   global app, pwd_box, pwd_tb
   app = App('BSK', 400, 400)
-  app.text_size = 20
 
   pwd_box = Box(app)
+  pwd_box.text_size = 20
   Box(pwd_box, width='fill', height=150)
   pwd_label = Text(pwd_box, 'Enter password:')
   pwd_tb = TextBox(pwd_box, '' ,hide_text=True)
-  pwd_button = PushButton(pwd_box, validate_password, text='Ok')
+  pwd_button = PushButton(pwd_box, log_in, text='Ok')
   pwd_tb.focus()
   
   app.when_key_pressed = on_key_press

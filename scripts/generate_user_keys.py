@@ -6,6 +6,7 @@ from base64 import b64encode, b64decode
 from hashlib import sha256
 import os
 
+
 def generate(local_key: bytes, private_path: str, public_path: str):
   print('Generating key pair')
   key = RSA.generate(2048)
@@ -15,7 +16,7 @@ def generate(local_key: bytes, private_path: str, public_path: str):
   cipher = AES.new(local_key, AES.MODE_CBC, init_vector)
   encrypted_bytes = cipher.encrypt(init_vector + pad(key.export_key('PEM'), AES.block_size))
 
-  ciphertext = b64encode(encrypted_bytes).decode('utf-8')
+  ciphertext = b64encode(encrypted_bytes).decode()
   
   print(f'Saving encrypted private key to "{private_path}"')
   with open(private_path, 'w') as private_key_file:
@@ -24,17 +25,17 @@ def generate(local_key: bytes, private_path: str, public_path: str):
   print(f'Saving public key to "{public_path}"')
   public_key = key.public_key()
   with open(public_path, 'w') as public_key_file:
-    public_key_file.write(public_key.export_key('PEM').decode('utf-8'))
+    public_key_file.write(public_key.export_key('PEM').decode())
 
 def main():
   password = input('Enter password: ')
 
   print('Generating password hash')
-  pwd_hash = sha256(password.encode('utf-8'))
+  pwd_hash = sha256(password.encode())
   local_key = pwd_hash.digest()
 
-  private_path = os.path.join('./keys', 'private')
-  public_path = os.path.join('./keys', 'public')
+  private_path = './keys/private/'
+  public_path = './keys/public/'
   os.makedirs(private_path, exist_ok=True)
   os.makedirs(public_path, exist_ok=True)
 
