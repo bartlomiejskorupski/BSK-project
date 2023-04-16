@@ -28,7 +28,7 @@ def load_public_key(name: str) -> RSA.RsaKey:
   with open(key_path, 'r') as pk_path:
     return RSA.import_key(pk_path.read())
 
-def decrypt_private_key(pwd: str) -> RSA.RsaKey:
+def decrypt_private_key(pwd: str, key_name: str) -> RSA.RsaKey:
   '''
   Attempts to decrypt the private key with a given password.
   
@@ -36,9 +36,9 @@ def decrypt_private_key(pwd: str) -> RSA.RsaKey:
     - RsaKey if password was correct
     - None if password was incorrect
   '''
-
   pwd_hash = pwd_to_hash(pwd)
-  encrypted_private_key = load_encrypted_private_key('A.key')
+  LOG.debug(f'Decrypting key: "{key_name}"')
+  encrypted_private_key = load_encrypted_private_key(key_name)
 
   init_vector = encrypted_private_key[:AES.block_size]
   data = encrypted_private_key[AES.block_size:]
