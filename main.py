@@ -113,7 +113,7 @@ def create_password_screen():
   global app, pwd_box, pwd_tb, instance_combo
   pwd_box = Box(app)
   pwd_box.text_size = 20
-  Box(pwd_box, width='fill', height=150)
+  Box(pwd_box, width='fill', height=100)
   instance_box = Box(pwd_box)
   instance_label = Text(instance_box, 'App Instance: ', align='left')
   instance_combo = Combo(instance_box, ['A', 'B'], align='left')
@@ -141,11 +141,11 @@ def main():
   app.display()
 
   # Cleanup
-  global send_socket, receive_socket
-  if send_socket:
+  try:
     send_socket.stop()
-  if receive_socket:
     receive_socket.stop()
+  except:
+    pass
 
 
 if __name__ == '__main__':
