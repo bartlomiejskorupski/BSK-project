@@ -5,6 +5,7 @@ from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from hashlib import sha256
 import os
+from getpass import getpass
 
 
 def generate(local_key: bytes, private_path: str, public_path: str):
@@ -28,7 +29,7 @@ def generate(local_key: bytes, private_path: str, public_path: str):
     public_key_file.write(public_key.export_key('PEM').decode())
 
 def main():
-  password = input('Enter password: ')
+  password = getpass('Enter password: ')
 
   print('Generating password hash')
   pwd_hash = sha256(password.encode())
