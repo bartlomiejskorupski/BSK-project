@@ -1,26 +1,57 @@
+from queue import Empty, Queue
 from guizero import App, TextBox, Text, PushButton, Box, error, Combo
-from encryption import decrypt_private_key
+from encryption import decrypt_private_key, decrypt_session_key, encrypt_session_key, generate_session_key, load_public_key
 from env import APP_INSTANCES
 from connection.receive_socket import ReceiveSocket
 from connection.send_socket import SendSocket
+from Crypto.PublicKey import RSA
 
 import logging
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.DEBUG)
 
+def process_receive_queue():
+  global other_public_key, session_key, send_socket, private_key, receive_queue
+  while not receive_queue.empty():
+    try:
+      data: bytes = receive_queue.get_nowait()
+      first_byte = data[0].to_bytes(1, "big")
+      if first_byte == b'p':
+        other_public_key = RSA.import_key(data[1:])
+        LOG.info('Received other public key')
+        if instance['name'] == 'A':
+          encrypted_session_key = encrypt_session_key(session_key, other_public_key)
+          LOG.info(f'Sending session key to B')
+          send_socket.send_message(b's' + encrypted_session_key)
+      if first_byte == b's':
+        encrypted_session_key = data[1:]
+        session_key = decrypt_session_key(encrypted_session_key, private_key)
+        LOG.info(f'Received session key: {session_key}')
+    except Empty:
+      pass
+    
+
+
 def initialize_connection():
-  global receive_socket, send_socket, instance
-  receive_socket = ReceiveSocket(instance['address'], instance['port'])
-  send_socket = SendSocket(instance['send_address'], instance['send_port'])
+  global receive_socket, send_socket, instance, receive_queue, session_key
+  receive_socket = ReceiveSocket(instance, receive_queue)
+  session_key = None
+  if instance['name'] == 'A':
+    session_key = generate_session_key(50)
+  send_socket = SendSocket(instance, session_key)
   receive_socket.start()
   send_socket.start()
+
+def send_public_key():
+  send_socket.send_message(b'AAAAUUUUUUUGH')
 
 def create_main_screen():
   global app, instance
   main_box = Box(app)
   Text(main_box, f'Instance: {instance["name"]}')
   Text(main_box, f'Port: {instance["port"]}')
+  PushButton(main_box, send_public_key, [], 'Send public key')
 
 def log_in():
   global pwd_tb, pwd_box, instance_combo
@@ -35,9 +66,10 @@ def log_in():
     pwd_box.disable()
     pwd_box.visible = False
     LOG.debug('Saving private key to memory')
-    global instance, private_key
+    global instance, private_key, public_key
     instance = selected_instance
     private_key = decrypted_private_key
+    public_key = load_public_key(instance['public_name'])
     LOG.debug('Initializing main screen')
     create_main_screen()
     initialize_connection()
@@ -69,12 +101,16 @@ def main():
   app = App('BSK', 400, 400)
   app.font = 'Ubuntu'
 
+  global receive_queue
+  receive_queue = Queue()
+
   create_password_screen()
 
   global instance, private_key
   instance = None
   private_key = None
 
+  app.repeat(100, process_receive_queue)
   app.when_key_pressed = on_key_press
   app.display()
 

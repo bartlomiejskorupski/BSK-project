@@ -1,5 +1,7 @@
+from queue import Queue
 from threading import Event, Thread
 import socket as sock
+import select
 
 import logging
 logging.basicConfig()
@@ -9,31 +11,54 @@ LOG.setLevel(logging.DEBUG)
 
 class ReceiveSocket(Thread):
 
-  def __init__(self, address: str, port: int):
+  def __init__(self, instance, queue: Queue):
     Thread.__init__(self)
-    self.address = address
-    self.port = port
+    self.address = instance['address']
+    self.port = instance['port']
     self.int_event = Event()
     self.running = True
+    self.message_q = queue
+
+  def __del__(self):
+    LOG.debug('Receive socket thread stopped')
 
   def run(self):
     LOG.info('Receive socket thread started')
-    with sock.socket(sock.AF_INET, sock.SOCK_STREAM) as s:
-      s.bind((self.address, self.port))
-      s.listen()
-      while self.running:
-        conn, addr = s.accept()
-        self.establish_connection(conn, addr[0], addr[1])
 
-  def establish_connection(self, conn: sock.socket, address, port):
-    with conn:
-      LOG.info(f'Incoming connection from {address}:{port}')
-      while self.running:
-        data = conn.recv(1024)
-        if not data:
-          LOG.info('Connection terminated')
-          break
-        LOG.debug(f'Received data: {data.decode()}')
+    server = sock.socket(sock.AF_INET, sock.SOCK_STREAM)
+    server.setsockopt(sock.SOL_SOCKET, sock.SO_REUSEADDR, 1)
+    server.setblocking(False)
+    server.bind((self.address, self.port))
+    server.listen(1)
+    inputs = [server]
+    outputs = []
+
+    while inputs and self.running:
+      readable, writable, exceptional = select.select(inputs, outputs, inputs, 0.5)
+      for s in readable:
+        if s is server:
+          connection, client_address = s.accept()
+          LOG.info(f'new connection from {client_address}')
+          connection.setblocking(False)
+          inputs.append(connection)
+        else:
+          data: bytes = s.recv(1024)
+          if data:
+            self.message_q.put(data)
+            LOG.info(f'Received message: {data}')
+            # Add output channel for response
+            if s not in outputs:
+              outputs.append(s)
+          else:
+            if s in outputs:
+              outputs.remove(s)
+            inputs.remove(s)
+            s.close()
+      for s in exceptional:
+        inputs.remove(s)
+        if s in outputs:
+            outputs.remove(s)
+        s.close()
   
   def stop(self):
     self.running = False

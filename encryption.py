@@ -1,9 +1,11 @@
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import AES
+from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from hashlib import sha256
+import random
+import string
 
 from env import PRIVATE_KEYS_PATH, PUBLIC_KEYS_PATH
 import os.path
@@ -56,4 +58,17 @@ def decrypt_private_key(pwd: str, key_name: str) -> RSA.RsaKey:
     LOG.error('Private key decryption failed')
     return None
 
+def generate_session_key(length: int) -> str:
+  possible_characters = string.ascii_letters + string.digits
+  random_characters_list = [random.choice(possible_characters) for _ in range(length)]
+  return ''.join(random_characters_list)
 
+def encrypt_session_key(session_key: str, public_key: RSA.RsaKey) -> bytes:
+  LOG.info('Using public key to encrypt the session key')
+  cipher = PKCS1_OAEP.new(public_key)
+  return cipher.encrypt(session_key.encode())
+
+def decrypt_session_key(encrypted_session_key: bytes, private_key: RSA.RsaKey) -> str:
+  cipher = PKCS1_OAEP.new(private_key)
+  decrypted_session_key = cipher.decrypt(encrypted_session_key)
+  return decrypted_session_key.decode()
