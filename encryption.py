@@ -72,3 +72,23 @@ def decrypt_session_key(encrypted_session_key: bytes, private_key: RSA.RsaKey) -
   cipher = PKCS1_OAEP.new(private_key)
   decrypted_session_key = cipher.decrypt(encrypted_session_key)
   return decrypted_session_key.decode()
+
+def encrypt_text_message(message: str, session_key: str) -> bytes:
+  init_vector = get_random_bytes(AES.block_size)
+  cipher = AES.new(session_key.encode(), AES.MODE_CBC, init_vector)
+  encrypted_bytes = cipher.encrypt(init_vector + pad(message.encode(), AES.block_size))
+  return encrypted_bytes
+
+def decrypt_text_message(encrypted_message: bytes, session_key: str):
+  init_vector = encrypted_message[:AES.block_size]
+  data = encrypted_message[AES.block_size:]
+  try:
+    cipher = AES.new(session_key.encode(), AES.MODE_CBC, init_vector)
+    decrypted_bytes = cipher.decrypt(data)
+    unpadded_bytes = unpad(decrypted_bytes, AES.block_size)
+    decrypted_message = unpadded_bytes.decode()
+    return decrypted_message
+  except:
+    LOG.error('Message decryption failed')
+    return None
+
