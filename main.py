@@ -62,7 +62,7 @@ def test_clicked():
   send_socket.send_message(b'mAUUUUUUGHHHH')
 
 def append_message_to_textbox(author: str, msg: str):
-  time_string = datetime.now().strftime("%H:%M")
+  time_string = datetime.now().strftime("%H:%M:%S")
   msg_tb.value += f'[{time_string}] {author}: {msg}'
   msg_tb.tk.see('end')
 
