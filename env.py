@@ -5,6 +5,7 @@ PUBLIC_KEYS_PATH = './keys/public'
 APP_INSTANCES = {
   'A': {
     'name': 'A',
+    'other': 'B',
     'address': 'localhost',
     'port': 1337,
     'send_address': 'localhost',
@@ -14,6 +15,7 @@ APP_INSTANCES = {
   },
   'B': {
     'name': 'B',
+    'other': 'A',
     'address': 'localhost',
     'port': 2137,
     'send_address': 'localhost',

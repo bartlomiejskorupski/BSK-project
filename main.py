@@ -5,6 +5,7 @@ from env import APP_INSTANCES
 from connection.receive_socket import ReceiveSocket
 from connection.send_socket import SendSocket
 from Crypto.PublicKey import RSA
+from datetime import datetime
 
 import logging
 logging.basicConfig()
@@ -34,8 +35,7 @@ def process_receive_queue():
         decrypted_message = decrypt_text_message(message_bytes, session_key)
         if decrypted_message:
           LOG.info(f'Received message: {decrypted_message}')
-          msg_tb.value += decrypted_message
-          msg_tb.tk.see('end')
+          append_message_to_textbox(instance['other'], decrypted_message)
     except Empty:
       pass
     
@@ -56,10 +56,15 @@ def enter_msg_key_pressed(event_data):
     enter_msg_tb.value = ''
     encrypted_message = encrypt_text_message(message, session_key)
     send_socket.send_message(b'm'+encrypted_message)
+    append_message_to_textbox(instance['name'], message)
   
 def test_clicked():
   send_socket.send_message(b'mAUUUUUUGHHHH')
 
+def append_message_to_textbox(author: str, msg: str):
+  time_string = datetime.now().strftime("%H:%M")
+  msg_tb.value += f'[{time_string}] {author}: {msg}'
+  msg_tb.tk.see('end')
 
 def create_main_screen():
   global app, instance, send_socket, enter_msg_tb, msg_tb
