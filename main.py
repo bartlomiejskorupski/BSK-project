@@ -6,36 +6,49 @@ from connection.receive_socket import ReceiveSocket
 from connection.send_socket import SendSocket
 from Crypto.PublicKey import RSA
 from datetime import datetime
+from messages import data_to_messages, Message, MessageType, AesMode
 
 import logging
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.DEBUG)
 
+def process_message(message: Message):
+  global other_public_key, session_key, send_socket, private_key
+
+  msg_type = message.type
+
+  if msg_type.value == MessageType.PUBLIC_KEY.value:
+    other_public_key = RSA.import_key(message.data)
+    LOG.info('Received other public key')
+    if instance['name'] == 'A':
+      encrypted_session_key = encrypt_session_key(session_key, other_public_key)
+      LOG.info(f'Sending session key to B')
+      session_key_message = Message(AesMode.NONE, MessageType.SESSION_KEY, encrypted_session_key)
+      send_socket.send_message(session_key_message.to_bytes())
+
+  if msg_type.value == MessageType.SESSION_KEY.value:
+    encrypted_session_key = message.data
+    session_key = decrypt_session_key(encrypted_session_key, private_key)
+    LOG.info(f'Received session key: {session_key}')
+
+  if msg_type.value == MessageType.MESSAGE.value:
+    global msg_tb
+    decrypted_message = decrypt_text_message(message, session_key)
+    if decrypted_message:
+      LOG.info(f'Received message: {decrypted_message}')
+      append_message_to_textbox(instance['other'], decrypted_message)
+
 def process_receive_queue():
-  global other_public_key, session_key, send_socket, private_key, receive_queue
+  global receive_queue
   while not receive_queue.empty():
     try:
       data: bytes = receive_queue.get_nowait()
-      first_byte = data[0].to_bytes(1, "big")
-      message_bytes = data[1:]
-      if first_byte == b'p':
-        other_public_key = RSA.import_key(message_bytes)
-        LOG.info('Received other public key')
-        if instance['name'] == 'A':
-          encrypted_session_key = encrypt_session_key(session_key, other_public_key)
-          LOG.info(f'Sending session key to B')
-          send_socket.send_message(b's' + encrypted_session_key)
-      if first_byte == b's':
-        encrypted_session_key = message_bytes
-        session_key = decrypt_session_key(encrypted_session_key, private_key)
-        LOG.info(f'Received session key: {session_key}')
-      if first_byte == b'm':
-        global msg_tb
-        decrypted_message = decrypt_text_message(message_bytes, session_key)
-        if decrypted_message:
-          LOG.info(f'Received message: {decrypted_message}')
-          append_message_to_textbox(instance['other'], decrypted_message)
+
+      messages = data_to_messages(data)
+      for message in messages:
+        process_message(message)
+
     except Empty:
       pass
     
@@ -54,12 +67,12 @@ def enter_msg_key_pressed(event_data):
   if event_data.key == '\r' and enter_msg_tb.value:
     message = enter_msg_tb.value
     enter_msg_tb.value = ''
-    encrypted_message = encrypt_text_message(message, session_key)
-    send_socket.send_message(b'm'+encrypted_message)
+    encrypted_message = encrypt_text_message(message, AesMode.CBC, session_key)
+    send_socket.send_message(encrypted_message.to_bytes())
     append_message_to_textbox(instance['name'], message)
   
 def test_clicked():
-  send_socket.send_message(b'mAUUUUUUGHHHH')
+  pass
 
 def append_message_to_textbox(author: str, msg: str):
   time_string = datetime.now().strftime("%H:%M:%S")

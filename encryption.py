@@ -4,6 +4,7 @@ from Crypto.Random import get_random_bytes
 from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from hashlib import sha256
+from messages import Message, MessageType, AesMode
 import random
 import string
 
@@ -73,15 +74,25 @@ def decrypt_session_key(encrypted_session_key: bytes, private_key: RSA.RsaKey) -
   decrypted_session_key = cipher.decrypt(encrypted_session_key)
   return decrypted_session_key.decode()
 
-def encrypt_text_message(message: str, session_key: str) -> bytes:
+def encrypt_text_message(text_message: str, mode: AesMode, session_key: str) -> Message:
   init_vector = get_random_bytes(AES.block_size)
   cipher = AES.new(session_key.encode(), AES.MODE_CBC, init_vector)
-  encrypted_bytes = cipher.encrypt(init_vector + pad(message.encode(), AES.block_size))
-  return encrypted_bytes
+  encrypted_bytes = cipher.encrypt(init_vector + pad(text_message.encode(), AES.block_size))
 
-def decrypt_text_message(encrypted_message: bytes, session_key: str):
-  init_vector = encrypted_message[:AES.block_size]
-  data = encrypted_message[AES.block_size:]
+  message = Message(mode, MessageType.MESSAGE, encrypted_bytes)
+  return message
+
+def decrypt_text_message(message: Message, session_key: str):
+  encrypted_data = message.data
+  
+  mode = None
+  if message.mode.value == AesMode.CBC:
+    mode = AES.MODE_CBC
+  else:
+    mode = AES.MODE_ECB
+
+  init_vector = encrypted_data[:AES.block_size]
+  data = encrypted_data[AES.block_size:]
   try:
     cipher = AES.new(session_key.encode(), AES.MODE_CBC, init_vector)
     decrypted_bytes = cipher.decrypt(data)

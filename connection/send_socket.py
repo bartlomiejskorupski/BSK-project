@@ -5,6 +5,7 @@ from time import sleep
 import select
 import selectors
 sel = selectors.DefaultSelector()
+from messages import Message, MessageType, AesMode
 
 import logging
 
@@ -57,7 +58,8 @@ class SendSocket(Thread):
       if ret:
         continue
       # On connection send public key
-      self.message_q.put_nowait(b'p' + self.public_key.export_key('PEM'))
+      pk_message = Message(AesMode.NONE, MessageType.PUBLIC_KEY, self.public_key.export_key('PEM'))
+      self.message_q.put_nowait(pk_message.to_bytes())
       LOG.info(f'Connected to {(self.address, self.port)}')
       sel.register(s, selectors.EVENT_READ | selectors.EVENT_WRITE)
       connected = True
