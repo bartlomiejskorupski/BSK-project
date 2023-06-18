@@ -94,6 +94,7 @@ def change_connection_status_connected():
   connection_text.text_color = 'green'
   chat_box.enable()
   file_box.enable()
+  aes_mode_combo.enable()
 
 def change_connection_status_not_connected():
   global connection_text, chat_box, file_box, msg_tb
@@ -101,6 +102,7 @@ def change_connection_status_not_connected():
   connection_text.text_color = 'red'
   chat_box.disable()
   file_box.disable()
+  aes_mode_combo.disable()
   msg_tb.value = ''
 
 def create_main_screen():
@@ -113,18 +115,20 @@ def create_main_screen():
   Box(main_box, align='right', width=padding, height='fill')
   main_box.text_size = 12
   top_box = Box(main_box, align='top', width='fill', height='fill')
-  chat_box = Box(main_box, align='top', width='fill', height=260)
+  chat_box = Box(main_box, align='top', width='fill', height=230)
   chat_box.disable()
   left_box = Box(top_box, align='left', width=120, height='fill')
   Text(left_box, f'Instance: {instance["name"]}')
+  Text(left_box, 'Status:')
   connection_text = Text(left_box, 'Not connected', color='red')
   # Text(left_box, f'Port: {instance["port"]}')
-  Text(left_box, 'Aes mode:')
-  aes_mode_combo = Combo(left_box, ['CBC', 'ECB'], 'CBC')
+  aes_mode_combo = Combo(left_box, ['CBC', 'ECB'], 'CBC', align='bottom')
+  aes_mode_combo.disable()
+  Text(left_box, 'Aes mode:', align='bottom')
   file_box = Box(top_box, align='left', width='fill', height='fill')
   file_box.disable()
-  send_box = Box(file_box, align='top', width='fill', height=50, border=True)
-  reciv_box = Box(file_box, align='top', width='fill', height=50, border=True)
+  send_box = Box(file_box, align='top', width='fill', height=70, border=True)
+  reciv_box = Box(file_box, align='top', width='fill', height=70, border=True)
   PushButton(send_box, test_clicked, (), 'Test', align='left')
   pb_box = Box(send_box, width='fill', height='fill', align='left', border=True)
   Text(pb_box, 'Filename: ', align='top')
