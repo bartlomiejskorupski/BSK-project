@@ -8,6 +8,8 @@ from connection.send_socket import SendSocket
 from Crypto.PublicKey import RSA
 from datetime import datetime
 from messages import data_to_messages, Message, MessageType, AesMode
+from pathlib import Path
+import os
 
 import logging
 logging.basicConfig()
@@ -83,6 +85,41 @@ def enter_msg_key_pressed(event_data):
 def test_clicked():
   send_progressbar['value'] += 20
 
+def send_file(filename: str, content: bytes):
+  global send_file_button, send_progressbar, send_filename_text, send_percent_text
+  send_file_button.disable()
+
+  send_filename_text.value = filename
+
+  max_chunk_size = 4096
+  file_size = len(content)
+  sent_data_size = 0
+
+  while sent_data_size < file_size:
+    # TODO
+    sent_data_size += max_chunk_size
+    send_progressbar['value'] = sent_data_size*100.0/file_size
+    percent = min(int(sent_data_size*100.0/file_size), 100)
+    send_percent_text.value = f'{percent}%'
+
+  send_file_button.enable()
+
+def send_file_button_clicked():
+  selected = select_file('Select file to send')
+  if not selected:
+    LOG.debug('No file selected')
+    return
+  LOG.debug(f'Selected file: {selected}')
+  selected_path = Path(selected)
+  # Open file in binary mode and read bytes
+  with open(selected_path, 'rb') as file:
+    content = file.read()
+    LOG.debug(f'Selected file size: {len(content)} bytes.')
+    send_file(selected_path.name, content)
+
+def open_downloads_folder():
+  os.system(f"xdg-open ./downloads")
+
 def append_message_to_textbox(author: str, msg: str):
   time_string = datetime.now().strftime("%H:%M:%S")
   msg_tb.value += f'[{time_string}] {author}: {msg}'
@@ -106,7 +143,9 @@ def change_connection_status_not_connected():
   msg_tb.value = ''
 
 def create_main_screen():
-  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo, send_progressbar, connection_text, chat_box, file_box
+  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo,\
+    send_progressbar, connection_text, chat_box, file_box, send_file_button,\
+    send_filename_text, send_percent_text, reciv_filename_text
   main_box = Box(app, width='fill', height='fill')
   padding = 10
   Box(main_box, align='top', width='fill', height=padding)
@@ -129,12 +168,19 @@ def create_main_screen():
   file_box.disable()
   send_box = Box(file_box, align='top', width='fill', height=70, border=True)
   reciv_box = Box(file_box, align='top', width='fill', height=70, border=True)
-  PushButton(send_box, test_clicked, (), 'Test', align='left')
-  pb_box = Box(send_box, width='fill', height='fill', align='left', border=True)
-  Text(pb_box, 'Filename: ', align='top')
-  Text(pb_box, '0%', align='right')
-  send_progressbar = Progressbar(pb_box.tk, orient='horizontal', length=150, mode='determinate')
+  # PushButton(send_box, test_clicked, (), 'Test', align='left')
+  send_file_button = PushButton(send_box, send_file_button_clicked, (), 'Send file', align='left')
+  send_pb_box = Box(send_box, width='fill', height='fill', align='left', border=True)
+  send_filename_text = Text(send_pb_box, '', align='top')
+  send_percent_text = Text(send_pb_box, '0%', align='right')
+  send_progressbar = Progressbar(send_pb_box.tk, orient='horizontal', length=130, mode='determinate')
   send_progressbar.pack()
+  open_downloads_button = PushButton(reciv_box, open_downloads_folder, (), 'Folder', align='left')
+  reciv_pb_box = Box(reciv_box, width='fill', height='fill', align='left', border=True)
+  reciv_filename_text = Text(reciv_pb_box, '', align='top')
+  reciv_percent_text = Text(reciv_pb_box, '0%', align='right')
+  reciv_progressbar = Progressbar(reciv_pb_box.tk, orient='horizontal', length=130, mode='determinate')
+  reciv_progressbar.pack()
   enter_msg_tb = TextBox(chat_box, '', width='fill', align='bottom')
   enter_msg_tb.focus()
   enter_msg_tb.when_key_pressed = enter_msg_key_pressed
