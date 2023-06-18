@@ -9,6 +9,7 @@ class MessageType(Enum):
   PUBLIC_KEY = 'p'
   SESSION_KEY = 's'
   MESSAGE = 'm'
+  DISCONNECTED = 'd'
 
 class AesMode(Enum):
   NONE = 0

@@ -27,11 +27,14 @@ def process_message(message: Message):
       LOG.info(f'Sending session key to B')
       session_key_message = Message(AesMode.NONE, MessageType.SESSION_KEY, encrypted_session_key)
       send_socket.send_message(session_key_message.to_bytes())
+      # Instances are connected
+      change_connection_status_connected()
 
   if msg_type.value == MessageType.SESSION_KEY.value:
     encrypted_session_key = message.data
     session_key = decrypt_session_key(encrypted_session_key, private_key)
     LOG.info(f'Received session key: {session_key}')
+    change_connection_status_connected()
 
   if msg_type.value == MessageType.MESSAGE.value:
     global msg_tb
@@ -59,7 +62,7 @@ def initialize_connection():
   session_key = None
   if instance['name'] == 'A':
     session_key = generate_session_key(32)
-  send_socket = SendSocket(instance, session_key)
+  send_socket = SendSocket(instance, session_key, change_connection_status_not_connected)
   receive_socket.start()
   send_socket.start()
 
@@ -85,32 +88,53 @@ def append_message_to_textbox(author: str, msg: str):
   msg_tb.value += f'[{time_string}] {author}: {msg}'
   msg_tb.tk.see('end')
 
+def change_connection_status_connected():
+  global connection_text, chat_box, file_box
+  connection_text.value = 'Connected'
+  connection_text.text_color = 'green'
+  chat_box.enable()
+  file_box.enable()
+
+def change_connection_status_not_connected():
+  global connection_text, chat_box, file_box, msg_tb
+  connection_text.value = 'Not connected'
+  connection_text.text_color = 'red'
+  chat_box.disable()
+  file_box.disable()
+  msg_tb.value = ''
+
 def create_main_screen():
-  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo, send_progressbar
+  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo, send_progressbar, connection_text, chat_box, file_box
   main_box = Box(app, width='fill', height='fill')
   padding = 10
   Box(main_box, align='top', width='fill', height=padding)
   Box(main_box, align='bottom', width='fill', height=padding)
   Box(main_box, align='left', width=padding, height='fill')
   Box(main_box, align='right', width=padding, height='fill')
-  main_box.text_size = 14
+  main_box.text_size = 12
   top_box = Box(main_box, align='top', width='fill', height='fill')
-  bottom_box = Box(main_box, align='top', width='fill', height=260)
-  left_box = Box(top_box, align='left', width=100, height='fill')
+  chat_box = Box(main_box, align='top', width='fill', height=260)
+  chat_box.disable()
+  left_box = Box(top_box, align='left', width=120, height='fill')
   Text(left_box, f'Instance: {instance["name"]}')
-  Text(left_box, f'Port: {instance["port"]}')
+  connection_text = Text(left_box, 'Not connected', color='red')
+  # Text(left_box, f'Port: {instance["port"]}')
   Text(left_box, 'Aes mode:')
   aes_mode_combo = Combo(left_box, ['CBC', 'ECB'], 'CBC')
-  right_box = Box(top_box, align='left', width='fill', height='fill')
-  send_box = Box(right_box, align='top', width='fill', height=50, border=True)
-  reciv_box = Box(right_box, align='top', width='fill', height=50, border=True)
+  file_box = Box(top_box, align='left', width='fill', height='fill')
+  file_box.disable()
+  send_box = Box(file_box, align='top', width='fill', height=50, border=True)
+  reciv_box = Box(file_box, align='top', width='fill', height=50, border=True)
   PushButton(send_box, test_clicked, (), 'Test', align='left')
-  send_progressbar = Progressbar(send_box.tk, orient='horizontal', length=150, mode='determinate')
+  pb_box = Box(send_box, width='fill', height='fill', align='left', border=True)
+  Text(pb_box, 'Filename: ', align='top')
+  Text(pb_box, '0%', align='right')
+  send_progressbar = Progressbar(pb_box.tk, orient='horizontal', length=150, mode='determinate')
   send_progressbar.pack()
-  enter_msg_tb = TextBox(bottom_box, '', width='fill', align='bottom')
+  enter_msg_tb = TextBox(chat_box, '', width='fill', align='bottom')
   enter_msg_tb.focus()
   enter_msg_tb.when_key_pressed = enter_msg_key_pressed
-  msg_tb = TextBox(bottom_box, '', width='fill', align='bottom',
+  msg_tb = TextBox(chat_box, '', width='fill', align='bottom',
     height=10, multiline=True, scrollbar=True, enabled=False)
 
 def log_in():

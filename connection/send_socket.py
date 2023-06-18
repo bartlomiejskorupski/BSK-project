@@ -16,7 +16,7 @@ LOG.setLevel(logging.DEBUG)
 
 class SendSocket(Thread):
 
-  def __init__(self, instance, session_key: str):
+  def __init__(self, instance, session_key: str, close_callback):
     Thread.__init__(self)
     self.instance = instance
     self.address = instance['send_address']
@@ -26,6 +26,7 @@ class SendSocket(Thread):
     self.message_q: Queue[bytes] = Queue()
     self.public_key = load_public_key(instance['public_name'])
     self.session_key = session_key
+    self.close_callback = close_callback
 
   def __del__(self):
     LOG.debug('Send socket thread stopped')
@@ -80,6 +81,8 @@ class SendSocket(Thread):
             if not data:
               LOG.info('Socket closed')
               connected = False
+              # Inform main thread the connection was broken
+              self.close_callback()
               break
               
 
