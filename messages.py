@@ -82,10 +82,10 @@ def decode_unsigned_number(byte_data: bytes) -> int:
 
     return number
 
-
-t_data = b'\x01p\x00\x04abcd\x02m\x00\x08abcd1919\x00s\x00\x101234567890123456'
-msgs = data_to_messages(t_data)
-for msg in msgs:
-  LOG.info(msg)
-  LOG.info(msg.to_bytes())
+def test():
+  t_data = b'\x01p\x00\x04abcd\x02m\x00\x08abcd1919\x00s\x00\x101234567890123456'
+  msgs = data_to_messages(t_data)
+  for msg in msgs:
+    LOG.info(msg)
+    LOG.info(msg.to_bytes())
 

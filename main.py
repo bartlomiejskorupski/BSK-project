@@ -1,6 +1,6 @@
 from queue import Empty, Queue
 from guizero import App, TextBox, Text, PushButton, Box, error, Combo
-from encryption import decrypt_private_key, decrypt_session_key, decrypt_text_message, encrypt_session_key, encrypt_text_message, generate_session_key, load_public_key
+from encryption import decrypt_private_key, decrypt_session_key, decrypt_text_message, encrypt_session_key, encrypt_text_message_cbc, encrypt_text_message_ecb, generate_session_key, load_public_key
 from env import APP_INSTANCES
 from connection.receive_socket import ReceiveSocket
 from connection.send_socket import SendSocket
@@ -63,11 +63,16 @@ def initialize_connection():
   send_socket.start()
 
 def enter_msg_key_pressed(event_data):
-  global enter_msg_tb, session_key
+  global enter_msg_tb, session_key, aes_mode_combo
   if event_data.key == '\r' and enter_msg_tb.value:
     message = enter_msg_tb.value
     enter_msg_tb.value = ''
-    encrypted_message = encrypt_text_message(message, AesMode.CBC, session_key)
+    # Check chosen aes mode
+    encrypted_message = None
+    if aes_mode_combo.value == 'CBC':
+      encrypted_message = encrypt_text_message_cbc(message, session_key)
+    else: 
+      encrypted_message = encrypt_text_message_ecb(message, session_key)
     send_socket.send_message(encrypted_message.to_bytes())
     append_message_to_textbox(instance['name'], message)
   
@@ -80,7 +85,7 @@ def append_message_to_textbox(author: str, msg: str):
   msg_tb.tk.see('end')
 
 def create_main_screen():
-  global app, instance, send_socket, enter_msg_tb, msg_tb
+  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo
   main_box = Box(app, width='fill', height='fill')
   padding = 10
   Box(main_box, align='top', width='fill', height=padding)
@@ -88,13 +93,18 @@ def create_main_screen():
   Box(main_box, align='left', width=padding, height='fill')
   Box(main_box, align='right', width=padding, height='fill')
   main_box.text_size = 14
-  Text(main_box, f'Instance: {instance["name"]}')
-  Text(main_box, f'Port: {instance["port"]}')
-  PushButton(main_box, test_clicked, (), 'Test')
-  enter_msg_tb = TextBox(main_box, '', width='fill', align='bottom')
+  top_box = Box(main_box, align='top', width='fill', height='fill')
+  bottom_box = Box(main_box, align='top', width='fill', height=260)
+  left_box = Box(top_box, align='left', width=100, height='fill', border=True)
+  Text(left_box, f'Instance: {instance["name"]}')
+  Text(left_box, f'Port: {instance["port"]}')
+  # PushButton(left_box, test_clicked, (), 'Test')
+  Text(left_box, 'Aes mode:')
+  aes_mode_combo = Combo(left_box, ['CBC', 'ECB'], 'CBC')
+  enter_msg_tb = TextBox(bottom_box, '', width='fill', align='bottom')
   enter_msg_tb.focus()
   enter_msg_tb.when_key_pressed = enter_msg_key_pressed
-  msg_tb = TextBox(main_box, '', width='fill', align='bottom',
+  msg_tb = TextBox(bottom_box, '', width='fill', align='bottom',
     height=10, multiline=True, scrollbar=True, enabled=False)
 
 def log_in():
