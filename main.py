@@ -1,5 +1,6 @@
 from queue import Empty, Queue
-from guizero import App, TextBox, Text, PushButton, Box, error, Combo
+from guizero import App, TextBox, Text, PushButton, Box, error, Combo, select_file
+from tkinter.ttk import Progressbar
 from encryption import decrypt_private_key, decrypt_session_key, decrypt_text_message, encrypt_session_key, encrypt_text_message_cbc, encrypt_text_message_ecb, generate_session_key, load_public_key
 from env import APP_INSTANCES
 from connection.receive_socket import ReceiveSocket
@@ -77,7 +78,7 @@ def enter_msg_key_pressed(event_data):
     append_message_to_textbox(instance['name'], message)
   
 def test_clicked():
-  pass
+  send_progressbar['value'] += 20
 
 def append_message_to_textbox(author: str, msg: str):
   time_string = datetime.now().strftime("%H:%M:%S")
@@ -85,7 +86,7 @@ def append_message_to_textbox(author: str, msg: str):
   msg_tb.tk.see('end')
 
 def create_main_screen():
-  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo
+  global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo, send_progressbar
   main_box = Box(app, width='fill', height='fill')
   padding = 10
   Box(main_box, align='top', width='fill', height=padding)
@@ -95,12 +96,17 @@ def create_main_screen():
   main_box.text_size = 14
   top_box = Box(main_box, align='top', width='fill', height='fill')
   bottom_box = Box(main_box, align='top', width='fill', height=260)
-  left_box = Box(top_box, align='left', width=100, height='fill', border=True)
+  left_box = Box(top_box, align='left', width=100, height='fill')
   Text(left_box, f'Instance: {instance["name"]}')
   Text(left_box, f'Port: {instance["port"]}')
-  # PushButton(left_box, test_clicked, (), 'Test')
   Text(left_box, 'Aes mode:')
   aes_mode_combo = Combo(left_box, ['CBC', 'ECB'], 'CBC')
+  right_box = Box(top_box, align='left', width='fill', height='fill')
+  send_box = Box(right_box, align='top', width='fill', height=50, border=True)
+  reciv_box = Box(right_box, align='top', width='fill', height=50, border=True)
+  PushButton(send_box, test_clicked, (), 'Test', align='left')
+  send_progressbar = Progressbar(send_box.tk, orient='horizontal', length=150, mode='determinate')
+  send_progressbar.pack()
   enter_msg_tb = TextBox(bottom_box, '', width='fill', align='bottom')
   enter_msg_tb.focus()
   enter_msg_tb.when_key_pressed = enter_msg_key_pressed
