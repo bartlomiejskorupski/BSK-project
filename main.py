@@ -117,8 +117,8 @@ def send_file_button_clicked():
     LOG.debug(f'Selected file size: {len(content)} bytes.')
     send_file(selected_path.name, content)
 
-def open_downloads_folder():
-  os.system(f"xdg-open ./downloads")
+def open_download_folder():
+  os.system(f"xdg-open ./download")
 
 def append_message_to_textbox(author: str, msg: str):
   time_string = datetime.now().strftime("%H:%M:%S")
@@ -175,7 +175,7 @@ def create_main_screen():
   send_percent_text = Text(send_pb_box, '0%', align='right')
   send_progressbar = Progressbar(send_pb_box.tk, orient='horizontal', length=130, mode='determinate')
   send_progressbar.pack()
-  open_downloads_button = PushButton(reciv_box, open_downloads_folder, (), 'Folder', align='left')
+  open_downloads_button = PushButton(reciv_box, open_download_folder, (), 'Folder', align='left')
   reciv_pb_box = Box(reciv_box, width='fill', height='fill', align='left', border=True)
   reciv_filename_text = Text(reciv_pb_box, '', align='top')
   reciv_percent_text = Text(reciv_pb_box, '0%', align='right')
