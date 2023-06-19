@@ -9,7 +9,8 @@ class MessageType(Enum):
   PUBLIC_KEY = 'p'
   SESSION_KEY = 's'
   MESSAGE = 'm'
-  DISCONNECTED = 'd'
+  FILE_BEGIN = 'f'
+  FILE_CHUNK = 'c'
 
 class AesMode(Enum):
   NONE = 0

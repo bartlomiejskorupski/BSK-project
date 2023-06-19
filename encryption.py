@@ -74,28 +74,30 @@ def decrypt_session_key(encrypted_session_key: bytes, private_key: RSA.RsaKey) -
   decrypted_session_key = cipher.decrypt(encrypted_session_key)
   return decrypted_session_key.decode()
 
-def encrypt_text_message_cbc(text_message: str, session_key: str) -> Message:
+def encrypt_message_data(data: bytes, session_key: str, mode: AesMode) -> bytes:
+  if mode.value == AesMode.CBC.value:
+    return encrypt_message_data_cbc(data, session_key)
+  else:
+    return encrypt_message_data_ecb(data, session_key)
+
+def encrypt_message_data_cbc(data: bytes, session_key: str) -> bytes:
   init_vector = get_random_bytes(AES.block_size)
   cipher = AES.new(session_key.encode(), AES.MODE_CBC, init_vector)
-  encrypted_bytes = cipher.encrypt(init_vector + pad(text_message.encode(), AES.block_size))
+  encrypted_bytes = cipher.encrypt(init_vector + pad(data, AES.block_size))
+  return encrypted_bytes
 
-  message = Message(AesMode.CBC, MessageType.MESSAGE, encrypted_bytes)
-  return message
-
-def encrypt_text_message_ecb(text_message: str, session_key: str) -> Message:
+def encrypt_message_data_ecb(data: bytes, session_key: str) -> bytes:
   cipher = AES.new(session_key.encode(), AES.MODE_ECB)
-  encrypted_bytes = cipher.encrypt(pad(text_message.encode(), AES.block_size))
+  encrypted_bytes = cipher.encrypt(pad(data, AES.block_size))
+  return encrypted_bytes
 
-  message = Message(AesMode.ECB, MessageType.MESSAGE, encrypted_bytes)
-  return message
-
-def decrypt_text_message(message: Message, session_key: str) -> str:
+def decrypt_message_data(message: Message, session_key: str) -> bytes:
   if message.mode.value == AesMode.CBC.value:
-    return decrypt_text_message_cbc(message, session_key)
+    return decrypt_message_data_cbc(message, session_key)
   else:
-    return decrypt_text_message_ecb(message, session_key)
+    return decrypt_message_data_ecb(message, session_key)
 
-def decrypt_text_message_cbc(message: Message, session_key: str) -> str:
+def decrypt_message_data_cbc(message: Message, session_key: str) -> bytes:
   LOG.info('Decrypting message in CBC mode.')
   init_vector = message.data[:AES.block_size]
   data = message.data[AES.block_size:]
@@ -103,20 +105,18 @@ def decrypt_text_message_cbc(message: Message, session_key: str) -> str:
     cipher = AES.new(session_key.encode(), AES.MODE_CBC, init_vector)
     decrypted_bytes = cipher.decrypt(data)
     unpadded_bytes = unpad(decrypted_bytes, AES.block_size)
-    decrypted_message = unpadded_bytes.decode()
-    return decrypted_message
+    return unpadded_bytes
   except:
     LOG.error('Message decryption failed (CBC)')
     return None
 
-def decrypt_text_message_ecb(message: Message, session_key: str) -> str:
+def decrypt_message_data_ecb(message: Message, session_key: str) -> bytes:
   LOG.info('Decrypting message in ECB mode.')
   try:
     cipher = AES.new(session_key.encode(), AES.MODE_ECB)
     decrypted_bytes = cipher.decrypt(message.data)
     unpadded_bytes = unpad(decrypted_bytes, AES.block_size)
-    decrypted_message = unpadded_bytes.decode()
-    return decrypted_message
+    return unpadded_bytes
   except:
     LOG.error('Message decryption failed (ECB)')
     return None

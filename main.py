@@ -1,7 +1,7 @@
 from queue import Empty, Queue
 from guizero import App, TextBox, Text, PushButton, Box, error, Combo, select_file
 from tkinter.ttk import Progressbar
-from encryption import decrypt_private_key, decrypt_session_key, decrypt_text_message, encrypt_session_key, encrypt_text_message_cbc, encrypt_text_message_ecb, generate_session_key, load_public_key
+from encryption import decrypt_private_key, decrypt_session_key, decrypt_message_data, encrypt_session_key, encrypt_message_data, generate_session_key, load_public_key
 from env import APP_INSTANCES
 from connection.receive_socket import ReceiveSocket
 from connection.send_socket import SendSocket
@@ -40,10 +40,24 @@ def process_message(message: Message):
 
   if msg_type.value == MessageType.MESSAGE.value:
     global msg_tb
-    decrypted_message = decrypt_text_message(message, session_key)
+    decrypted_message = decrypt_message_data(message, session_key).decode()
     if decrypted_message:
       LOG.info(f'Received message: {decrypted_message}')
       append_message_to_textbox(instance['other'], decrypted_message)
+
+  if msg_type.value == MessageType.FILE_BEGIN.value:
+    global reciv_progressbar, reciv_percent_text, reciv_filename_text
+    decrypted_text = decrypt_message_data(message, session_key).decode()
+    if decrypted_text:
+      LOG.info(f'Received file begin message: {decrypted_text}')
+      try:
+        split_text = decrypted_text.split(',')
+        filename = split_text[0]
+        file_size = int(split_text[1])
+        set_progressbar_percent(reciv_progressbar, reciv_percent_text, 0, file_size)
+        reciv_filename_text.value = filename
+      except:
+        LOG.error('File begin message is incorrect')
 
 def process_receive_queue():
   global receive_queue
@@ -74,11 +88,10 @@ def enter_msg_key_pressed(event_data):
     message = enter_msg_tb.value
     enter_msg_tb.value = ''
     # Check chosen aes mode
-    encrypted_message = None
-    if aes_mode_combo.value == 'CBC':
-      encrypted_message = encrypt_text_message_cbc(message, session_key)
-    else: 
-      encrypted_message = encrypt_text_message_ecb(message, session_key)
+    encrypted_data = None
+    mode = AesMode.CBC if aes_mode_combo.value == 'CBC' else AesMode.ECB
+    encrypted_data = encrypt_message_data(message.encode(), session_key, mode)
+    encrypted_message = Message(mode, MessageType.MESSAGE, encrypted_data)
     send_socket.send_message(encrypted_message.to_bytes())
     append_message_to_textbox(instance['name'], message)
   
@@ -86,10 +99,17 @@ def test_clicked():
   send_progressbar['value'] += 20
 
 def send_file(filename: str, content: bytes):
-  global send_file_button, send_progressbar, send_filename_text, send_percent_text
+  global send_file_button, send_progressbar, send_filename_text, send_percent_text,\
+    send_socket, aes_mode_combo, session_key
   send_file_button.disable()
 
   send_filename_text.value = filename
+
+  file_info = f'{filename},{len(content)}'
+  mode = AesMode.CBC if aes_mode_combo.value == 'CBC' else AesMode.ECB
+  encrypted_file_info = encrypt_message_data(file_info.encode(), session_key, mode)
+  file_begin_msg = Message(mode, MessageType.FILE_BEGIN, encrypted_file_info)
+  send_socket.send_message(file_begin_msg.to_bytes())
 
   max_chunk_size = 4096
   file_size = len(content)
@@ -98,9 +118,7 @@ def send_file(filename: str, content: bytes):
   while sent_data_size < file_size:
     # TODO
     sent_data_size += max_chunk_size
-    send_progressbar['value'] = sent_data_size*100.0/file_size
-    percent = min(int(sent_data_size*100.0/file_size), 100)
-    send_percent_text.value = f'{percent}%'
+    set_progressbar_percent(send_progressbar, send_percent_text, sent_data_size, file_size)
 
   send_file_button.enable()
 
@@ -117,13 +135,15 @@ def send_file_button_clicked():
     LOG.debug(f'Selected file size: {len(content)} bytes.')
     send_file(selected_path.name, content)
 
-def open_download_folder():
-  os.system(f"xdg-open ./download")
-
 def append_message_to_textbox(author: str, msg: str):
   time_string = datetime.now().strftime("%H:%M:%S")
   msg_tb.value += f'[{time_string}] {author}: {msg}'
   msg_tb.tk.see('end')
+
+def set_progressbar_percent(progressbar: Progressbar, progressbar_percent_text: Text, count: int, out_of: int):
+  progressbar['value'] = count*100.0/out_of
+  percent = min(int(count*100.0/out_of), 100)
+  progressbar_percent_text.value = f'{percent}%'
 
 def change_connection_status_connected():
   global connection_text, chat_box, file_box
@@ -145,7 +165,8 @@ def change_connection_status_not_connected():
 def create_main_screen():
   global app, instance, send_socket, enter_msg_tb, msg_tb, aes_mode_combo,\
     send_progressbar, connection_text, chat_box, file_box, send_file_button,\
-    send_filename_text, send_percent_text, reciv_filename_text
+    send_filename_text, send_percent_text, reciv_filename_text, reciv_progressbar,\
+    reciv_percent_text
   main_box = Box(app, width='fill', height='fill')
   padding = 10
   Box(main_box, align='top', width='fill', height=padding)
@@ -175,7 +196,7 @@ def create_main_screen():
   send_percent_text = Text(send_pb_box, '0%', align='right')
   send_progressbar = Progressbar(send_pb_box.tk, orient='horizontal', length=130, mode='determinate')
   send_progressbar.pack()
-  open_downloads_button = PushButton(reciv_box, open_download_folder, (), 'Folder', align='left')
+  open_downloads_button = PushButton(reciv_box, os.system, ('xdg-open ./download'), 'Folder', align='left')
   reciv_pb_box = Box(reciv_box, width='fill', height='fill', align='left', border=True)
   reciv_filename_text = Text(reciv_pb_box, '', align='top')
   reciv_percent_text = Text(reciv_pb_box, '0%', align='right')
