@@ -10,21 +10,21 @@ from datetime import datetime
 from messages import data_to_messages, Message, MessageType, AesMode
 from pathlib import Path
 import os
-from random import randint
 
 import logging
+
+from queue_processor import QueueProcessor
 logging.basicConfig()
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.DEBUG)
 
-def process_message(message: Message):
+def process_ui_message(message: Message):
   global other_public_key, session_key, send_socket, private_key, reciv_progressbar,\
-    reciv_percent_text, reciv_filename_text, received_file_content, received_filename,\
-    received_file_size
+    reciv_percent_text, reciv_filename_text, received_filename, msg_tb,\
+    received_file_total_size, received_file_current_size
 
   if message.type.value == MessageType.PUBLIC_KEY.value:
     other_public_key = RSA.import_key(message.data)
-    LOG.info('Received PUBLIC_KEY message')
     if instance['name'] == 'A':
       encrypted_session_key = encrypt_session_key(session_key, other_public_key)
       LOG.info(f'Sending session key to B')
@@ -34,66 +34,41 @@ def process_message(message: Message):
       change_connection_status_connected()
 
   if message.type.value == MessageType.SESSION_KEY.value:
-    LOG.debug('Received SESSION_KEY message')
-    encrypted_session_key = message.data
-    session_key = decrypt_session_key(encrypted_session_key, private_key)
+    session_key = message.data.decode()
     LOG.info(f'Received session key: {session_key}')
     change_connection_status_connected()
 
   if message.type.value == MessageType.MESSAGE.value:
-    LOG.debug('Received MESSAGE')
-    global msg_tb
-    decrypted_message = decrypt_message_data(message, session_key).decode()
-    if decrypted_message:
-      LOG.info(f'Received message: {decrypted_message}')
-      append_message_to_textbox(instance['other'], decrypted_message)
+    text_message = message.data.decode()
+    LOG.info(f'Received message: {text_message}')
+    append_message_to_textbox(instance['other'], text_message)
 
   if message.type.value == MessageType.FILE_BEGIN.value:
-    LOG.debug('Received FILE_BEGIN message')
-    decrypted_text = decrypt_message_data(message, session_key).decode()
-    if decrypted_text:
-      LOG.info(f'Received file begin message: {decrypted_text}')
-      try:
-        split_text = decrypted_text.split(',')
-        received_filename = split_text[0]
-        received_file_size = int(split_text[1])
-        set_progressbar_percent(reciv_progressbar, reciv_percent_text, 0, received_file_size)
-        reciv_filename_text.value = received_filename
-        received_file_content = bytes()
-      except:
-        LOG.error('File begin message is incorrect')
+    message_text = message.data.decode()
+    LOG.debug(f'Received file begin message: {message_text}')
+    try:
+      split_text = message_text.split(',')
+      received_filename = split_text[0]
+      received_file_total_size = int(split_text[1])
+      received_file_current_size = 0
+      set_progressbar_percent(reciv_progressbar, reciv_percent_text, 0, received_file_total_size)
+      reciv_filename_text.value = received_filename
+    except:
+      LOG.error('File begin message is incorrect')
 
   if message.type.value == MessageType.FILE_CHUNK.value:
-    LOG.debug('Received FILE_CHUNK message')
-    decrypted_chunk = decrypt_message_data(message, session_key)
-    received_file_content += decrypted_chunk
-    set_progressbar_percent(reciv_progressbar, reciv_percent_text, len(received_file_content), received_file_size)
-    if len(received_file_content) >= received_file_size:
-      LOG.info(f'Received all file bytes')
-      download_path = Path('./download')
-      download_path.mkdir(exist_ok=True)
-      file_path = download_path/received_filename
-      if file_path.is_file():
-        random_numbers = ''.join([str(randint(0, 9)) for _ in range(10)])
-        altered_filename = f'{received_filename}_{random_numbers}'
-        file_path = download_path/altered_filename
-      with open(file_path, 'wb') as file:
-        file.write(received_file_content)
+    received_file_current_size += int(message.data.decode())
+    set_progressbar_percent(reciv_progressbar, reciv_percent_text, received_file_current_size, received_file_total_size)
 
-
-def process_receive_queue():
-  global receive_queue
-  while not receive_queue.empty():
+def process_ui_queue():
+  global ui_queue
+  while not ui_queue.empty():
     try:
-      data: bytes = receive_queue.get_nowait()
-
-      messages = data_to_messages(data)
-      for message in messages:
-        process_message(message)
-
+      message: Message = ui_queue.get_nowait()
+      process_ui_message(message)
     except Empty:
-      pass
-    
+        pass
+
 def initialize_connection():
   global receive_socket, send_socket, instance, receive_queue, session_key
   receive_socket = ReceiveSocket(instance, receive_queue)
@@ -103,6 +78,14 @@ def initialize_connection():
   send_socket = SendSocket(instance, session_key, change_connection_status_not_connected)
   receive_socket.start()
   send_socket.start()
+
+def start_queue_processor():
+  global queue_processor, receive_queue, private_key, session_key
+
+  queue_processor = QueueProcessor(receive_queue, ui_queue)
+  queue_processor.start()
+  queue_processor.set_private_key(private_key)
+  queue_processor.set_session_key(session_key)
 
 def enter_msg_key_pressed(event_data):
   global enter_msg_tb, session_key, aes_mode_combo
@@ -256,6 +239,7 @@ def log_in():
     public_key = load_public_key(instance['public_name'])
     LOG.debug('Initializing main screen')
     initialize_connection()
+    start_queue_processor()
     create_main_screen()
 
   else:
@@ -285,8 +269,9 @@ def main():
   app = App('BSK', 400, 400)
   app.font = 'Ubuntu'
 
-  global receive_queue
+  global receive_queue, ui_queue
   receive_queue = Queue()
+  ui_queue = Queue()
 
   create_password_screen()
 
@@ -294,7 +279,7 @@ def main():
   instance = None
   private_key = None
 
-  app.repeat(100, process_receive_queue)
+  app.repeat(200, process_ui_queue)
   app.when_key_pressed = on_key_press
   app.display()
 
@@ -302,6 +287,7 @@ def main():
   try:
     send_socket.stop()
     receive_socket.stop()
+    queue_processor.stop()
   except:
     pass
 

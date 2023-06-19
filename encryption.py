@@ -98,7 +98,7 @@ def decrypt_message_data(message: Message, session_key: str) -> bytes:
     return decrypt_message_data_ecb(message, session_key)
 
 def decrypt_message_data_cbc(message: Message, session_key: str) -> bytes:
-  LOG.info('Decrypting message in CBC mode.')
+  # LOG.info('Decrypting message in CBC mode.')
   init_vector = message.data[:AES.block_size]
   data = message.data[AES.block_size:]
   try:
@@ -111,7 +111,7 @@ def decrypt_message_data_cbc(message: Message, session_key: str) -> bytes:
     return None
 
 def decrypt_message_data_ecb(message: Message, session_key: str) -> bytes:
-  LOG.info('Decrypting message in ECB mode.')
+  # LOG.info('Decrypting message in ECB mode.')
   try:
     cipher = AES.new(session_key.encode(), AES.MODE_ECB)
     decrypted_bytes = cipher.decrypt(message.data)

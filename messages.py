@@ -40,28 +40,39 @@ class Message:
 # 2 bytes data size in bytes
 # n bytes DATA
 
-def data_to_messages(recv_data: bytes) -> list[Message]:
-  if not len(recv_data):
-    raise ValueError('No data')
-  
+def data_to_messages(recv_data: bytes) -> tuple[list[Message], bytes]:
+  '''
+    Processed data into as many messages as it can.
+    Returns a tuple containing the list of messages and bytes
+    that were not processed due to the data being incomplete.
+  '''
+
   recv_data_size = len(recv_data)
+  # LOG.debug(f'Recv_data size: {recv_data_size} bytes')
   data_counter = 0
 
-  LOG.debug(f'Recv_data size: {recv_data_size} bytes')
-  #LOG.debug(f'Data: {recv_data}')
-
   messages: list[Message] = []
-  while data_counter < recv_data_size:
-    mode = recv_data[data_counter]
-    type = recv_data[data_counter+1:data_counter+2].decode()
-    size = decode_unsigned_number(recv_data[data_counter+2:data_counter+4])
-    data = recv_data[data_counter+4:data_counter+4+size]
+  try:
+    while data_counter < recv_data_size:
+      # LOG.debug(f'Message header: {recv_data[0]}, {recv_data[1]}, {recv_data[2]}, {recv_data[3]}')
+      mode = recv_data[data_counter]
+      # LOG.debug(f'Mode: {bytes([mode])}')
+      type = recv_data[data_counter+1:data_counter+2].decode()
+      # LOG.debug(f'Type: {type}')
+      complete_size = decode_unsigned_number(recv_data[data_counter+2:data_counter+4])
+      # LOG.debug(f'Size: {complete_size}')
+      data = recv_data[data_counter+4:data_counter+4+complete_size]
+      # LOG.debug(f'Data_size: {len(data)}')
+      if len(data) < complete_size:
+        #LOG.debug(f'Not enough data. {len(data)}/{complete_size}')
+        break
+      messages.append(Message(AesMode(mode), MessageType(type), data))
+      data_counter += 4+len(data)
+      # LOG.debug(f'Processed {data_counter}/{recv_data_size} bytes')
+  except Exception as ex:
+    LOG.error(ex)
 
-    messages.append(Message(AesMode(mode), MessageType(type), data))
-    data_counter += 4+size
-    LOG.debug(f'Processed {data_counter}/{recv_data_size} bytes')
-
-  return messages
+  return (messages, recv_data[data_counter:recv_data_size])
 
 
 def encode_unsigned_number(number: int) -> bytes:
