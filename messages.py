@@ -11,6 +11,8 @@ class MessageType(Enum):
   MESSAGE = 'm'
   FILE_BEGIN = 'f'
   FILE_CHUNK = 'c'
+  UI_FILE_BEGIN = 'v'
+  UI_FILE_CHUNK = 'u'
 
 class AesMode(Enum):
   NONE = 0

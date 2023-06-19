@@ -16,14 +16,14 @@ LOG.setLevel(logging.DEBUG)
 
 class SendSocket(Thread):
 
-  def __init__(self, instance, session_key: str, close_callback):
+  def __init__(self, instance, session_key: str, close_callback, send_queue: Queue):
     Thread.__init__(self)
     self.instance = instance
     self.address = instance['send_address']
     self.port = instance['send_port']
     self.int_event = Event()
     self.running = True
-    self.message_q: Queue[bytes] = Queue()
+    self.send_queue: Queue[bytes] = send_queue
     self.public_key = load_public_key(instance['public_name'])
     self.session_key = session_key
     self.close_callback = close_callback
@@ -54,13 +54,14 @@ class SendSocket(Thread):
     LOG.info('Send socket thread started')
     s = sock.socket(sock.AF_INET, sock.SOCK_STREAM)
     s.setblocking(False)
+
     while self.running:
       ret = s.connect_ex((self.address, self.port))
       if ret:
         continue
       # On connection send public key
       pk_message = Message(AesMode.NONE, MessageType.PUBLIC_KEY, self.public_key.export_key('PEM'))
-      self.message_q.put_nowait(pk_message.to_bytes())
+      self.send_queue.put_nowait(pk_message.to_bytes())
       LOG.info(f'Connected to {(self.address, self.port)}')
       sel.register(s, selectors.EVENT_READ | selectors.EVENT_WRITE)
       connected = True
@@ -68,11 +69,16 @@ class SendSocket(Thread):
         for key, mask in sel.select(1):
           conn = key.fileobj
           if mask & selectors.EVENT_WRITE:
-            while not self.message_q.empty():
+            while not self.send_queue.empty():
               try:
-                message_bytes = self.message_q.get()
-                # LOG.debug('Im in a toilet sending: ' + message_bytes)
-                s.sendall(message_bytes)
+                message_bytes = self.send_queue.get()
+                while True:
+                  try:
+                    s.sendall(message_bytes)
+                    break
+                  except BlockingIOError:
+                    LOG.error(f'Buffer is full, waiting.')
+                    self.int_event.wait(0.1)
               except Empty:
                 LOG.debug('Empty queue')
           if mask & selectors.EVENT_READ:
@@ -87,7 +93,7 @@ class SendSocket(Thread):
               
 
   def send_message(self, msg_bytes: bytes):
-    self.message_q.put_nowait(msg_bytes)
+    self.send_queue.put_nowait(msg_bytes)
 
   def stop(self):
     self.running = False

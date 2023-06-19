@@ -1,4 +1,5 @@
 from queue import Empty, Queue
+import threading
 from guizero import App, TextBox, Text, PushButton, Box, error, Combo, select_file
 from tkinter.ttk import Progressbar
 from encryption import decrypt_private_key, decrypt_session_key, decrypt_message_data, encrypt_session_key, encrypt_message_data, generate_session_key, load_public_key
@@ -7,6 +8,7 @@ from connection.receive_socket import ReceiveSocket
 from connection.send_socket import SendSocket
 from Crypto.PublicKey import RSA
 from datetime import datetime
+from file_sender import FileSender
 from messages import data_to_messages, Message, MessageType, AesMode
 from pathlib import Path
 import os
@@ -21,7 +23,8 @@ LOG.setLevel(logging.DEBUG)
 def process_ui_message(message: Message):
   global other_public_key, session_key, send_socket, private_key, reciv_progressbar,\
     reciv_percent_text, reciv_filename_text, received_filename, msg_tb,\
-    received_file_total_size, received_file_current_size
+    received_file_total_size, received_file_current_size, send_progressbar,\
+    send_filename_text, send_percent_text, file_sender
 
   if message.type.value == MessageType.PUBLIC_KEY.value:
     other_public_key = RSA.import_key(message.data)
@@ -36,6 +39,7 @@ def process_ui_message(message: Message):
   if message.type.value == MessageType.SESSION_KEY.value:
     session_key = message.data.decode()
     LOG.info(f'Received session key: {session_key}')
+    file_sender.set_session_key(session_key)
     change_connection_status_connected()
 
   if message.type.value == MessageType.MESSAGE.value:
@@ -59,25 +63,52 @@ def process_ui_message(message: Message):
   if message.type.value == MessageType.FILE_CHUNK.value:
     received_file_current_size += int(message.data.decode())
     set_progressbar_percent(reciv_progressbar, reciv_percent_text, received_file_current_size, received_file_total_size)
+  
+  if message.type.value == MessageType.UI_FILE_BEGIN.value:
+    send_filename_text.value = message.data.decode()
+
+  if message.type.value == MessageType.UI_FILE_CHUNK.value:
+    set_progressbar_percent(send_progressbar, send_percent_text, int(message.data.decode()), 100)
+
 
 def process_ui_queue():
   global ui_queue
+  ui_msgs: list[Message] = []
+  last_chunk_msg = None
   while not ui_queue.empty():
     try:
       message: Message = ui_queue.get_nowait()
-      process_ui_message(message)
+      ui_msgs.append(message)
+      if message.type.value == MessageType.UI_FILE_CHUNK.value:
+        last_chunk_msg = message
     except Empty:
         pass
+  filtered = list(filter(lambda msg: msg.type.value != MessageType.UI_FILE_CHUNK.value, ui_msgs))
+  # LOG.debug(f'Messages: {len(ui_msgs)}, Filtered: {len(filtered)}')
+  for msg in filtered:
+    process_ui_message(msg)
+  if last_chunk_msg:
+    process_ui_message(last_chunk_msg)
+  app.after(200, process_ui_queue)
 
 def initialize_connection():
-  global receive_socket, send_socket, instance, receive_queue, session_key
+  global receive_socket, send_socket, instance, receive_queue, session_key, send_queue
   receive_socket = ReceiveSocket(instance, receive_queue)
   session_key = None
   if instance['name'] == 'A':
     session_key = generate_session_key(32)
-  send_socket = SendSocket(instance, session_key, change_connection_status_not_connected)
+  send_queue = Queue()
+  send_socket = SendSocket(instance, session_key, change_connection_status_not_connected, send_queue)
   receive_socket.start()
   send_socket.start()
+
+def start_file_sender():
+  global file_sender, file_queue, ui_queue, session_key, send_queue
+
+  file_sender = FileSender(file_queue, ui_queue, send_queue)
+  file_sender.start()
+  file_sender.set_session_key(session_key)
+
 
 def start_queue_processor():
   global queue_processor, receive_queue, private_key, session_key
@@ -99,40 +130,6 @@ def enter_msg_key_pressed(event_data):
     encrypted_message = Message(mode, MessageType.MESSAGE, encrypted_data)
     send_socket.send_message(encrypted_message.to_bytes())
     append_message_to_textbox(instance['name'], message)
-  
-def test_clicked():
-  send_progressbar['value'] += 20
-
-def send_file(filename: str, content: bytes):
-  global send_file_button, send_progressbar, send_filename_text, send_percent_text,\
-    send_socket, aes_mode_combo, session_key
-  send_file_button.disable()
-  LOG.info(f'Sending file: {filename}, size: {len(content)} bytes')
-
-  send_filename_text.value = filename
-
-  file_info = f'{filename},{len(content)}'
-  mode = AesMode.CBC if aes_mode_combo.value == 'CBC' else AesMode.ECB
-  encrypted_file_info = encrypt_message_data(file_info.encode(), session_key, mode)
-  file_begin_msg = Message(mode, MessageType.FILE_BEGIN, encrypted_file_info)
-  LOG.debug(f'Sending file begin message')
-  send_socket.send_message(file_begin_msg.to_bytes())
-
-  max_chunk_size = 4096
-  file_size = len(content)
-  sent_data_size = 0
-
-  while sent_data_size < file_size:
-    chunk = content[sent_data_size:sent_data_size+max_chunk_size]
-    encrypted_chunk = encrypt_message_data(chunk, session_key, mode)
-    file_chunk_msg = Message(mode, MessageType.FILE_CHUNK, encrypted_chunk)
-    send_socket.send_message(file_chunk_msg.to_bytes())
-    LOG.debug(f'Sending file chunk. Encrypted chunk size: {len(encrypted_chunk)} bytes')
-
-    sent_data_size += max_chunk_size
-    set_progressbar_percent(send_progressbar, send_percent_text, sent_data_size, file_size)
-
-  send_file_button.enable()
 
 def send_file_button_clicked():
   selected = select_file('Select file to send')
@@ -141,11 +138,8 @@ def send_file_button_clicked():
     return
   LOG.debug(f'Selected file: {selected}')
   selected_path = Path(selected)
-  # Open file in binary mode and read bytes
-  with open(selected_path, 'rb') as file:
-    content = file.read()
-    LOG.debug(f'Selected file size: {len(content)} bytes.')
-    send_file(selected_path.name, content)
+  mode = AesMode.CBC if aes_mode_combo.value == 'CBC' else AesMode.ECB
+  file_queue.put_nowait((selected_path, mode))
 
 def append_message_to_textbox(author: str, msg: str):
   time_string = datetime.now().strftime("%H:%M:%S")
@@ -199,17 +193,17 @@ def create_main_screen():
   Text(left_box, 'Aes mode:', align='bottom')
   file_box = Box(top_box, align='left', width='fill', height='fill')
   file_box.disable()
-  send_box = Box(file_box, align='top', width='fill', height=70, border=True)
-  reciv_box = Box(file_box, align='top', width='fill', height=70, border=True)
+  send_box = Box(file_box, align='top', width='fill', height=70)
+  reciv_box = Box(file_box, align='top', width='fill', height=70)
   # PushButton(send_box, test_clicked, (), 'Test', align='left')
   send_file_button = PushButton(send_box, send_file_button_clicked, (), 'Send file', align='left')
-  send_pb_box = Box(send_box, width='fill', height='fill', align='left', border=True)
+  send_pb_box = Box(send_box, width='fill', height='fill', align='left')
   send_filename_text = Text(send_pb_box, '', align='top')
   send_percent_text = Text(send_pb_box, '0%', align='right')
   send_progressbar = Progressbar(send_pb_box.tk, orient='horizontal', length=130, mode='determinate')
   send_progressbar.pack()
   open_downloads_button = PushButton(reciv_box, os.system, ['xdg-open ./download'], 'Folder', align='left')
-  reciv_pb_box = Box(reciv_box, width='fill', height='fill', align='left', border=True)
+  reciv_pb_box = Box(reciv_box, width='fill', height='fill', align='left')
   reciv_filename_text = Text(reciv_pb_box, '', align='top')
   reciv_percent_text = Text(reciv_pb_box, '0%', align='right')
   reciv_progressbar = Progressbar(reciv_pb_box.tk, orient='horizontal', length=130, mode='determinate')
@@ -240,6 +234,7 @@ def log_in():
     LOG.debug('Initializing main screen')
     initialize_connection()
     start_queue_processor()
+    start_file_sender()
     create_main_screen()
 
   else:
@@ -269,9 +264,10 @@ def main():
   app = App('BSK', 400, 400)
   app.font = 'Ubuntu'
 
-  global receive_queue, ui_queue
+  global receive_queue, ui_queue, file_queue
   receive_queue = Queue()
   ui_queue = Queue()
+  file_queue = Queue()
 
   create_password_screen()
 
@@ -279,18 +275,27 @@ def main():
   instance = None
   private_key = None
 
-  app.repeat(200, process_ui_queue)
+  app.after(100, process_ui_queue)
   app.when_key_pressed = on_key_press
   app.display()
 
   # Cleanup
   try:
     send_socket.stop()
+  except:
+    pass
+  try:
     receive_socket.stop()
+  except:
+    pass
+  try:
     queue_processor.stop()
   except:
     pass
-
+  try:
+    file_sender.stop()
+  except:
+    pass
 
 if __name__ == '__main__':
   main()
