@@ -11,6 +11,7 @@ class MessageType(Enum):
   MESSAGE = 'm'
   FILE_BEGIN = 'f'
   FILE_CHUNK = 'c'
+  # UI MESSAGE ONLY
   UI_FILE_BEGIN = 'v'
   UI_FILE_CHUNK = 'u'
 
