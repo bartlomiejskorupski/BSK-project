@@ -47,6 +47,9 @@ def data_to_messages(recv_data: bytes) -> list[Message]:
   recv_data_size = len(recv_data)
   data_counter = 0
 
+  LOG.debug(f'Recv_data size: {recv_data_size} bytes')
+  #LOG.debug(f'Data: {recv_data}')
+
   messages: list[Message] = []
   while data_counter < recv_data_size:
     mode = recv_data[data_counter]
@@ -56,7 +59,7 @@ def data_to_messages(recv_data: bytes) -> list[Message]:
 
     messages.append(Message(AesMode(mode), MessageType(type), data))
     data_counter += 4+size
-    LOG.debug(f'{data_counter} / {recv_data_size}')
+    LOG.debug(f'Processed {data_counter}/{recv_data_size} bytes')
 
   return messages
 

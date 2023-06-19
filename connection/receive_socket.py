@@ -42,10 +42,10 @@ class ReceiveSocket(Thread):
           connection.setblocking(False)
           inputs.append(connection)
         else:
-          data: bytes = s.recv(1024)
+          data: bytes = s.recv(8192)
           if data:
             self.message_q.put(data)
-            LOG.info(f'Received message: {data}')
+            LOG.debug(f'Received data size: {len(data)} bytes')
             # Add output channel for response
             if s not in outputs:
               outputs.append(s)

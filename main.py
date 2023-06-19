@@ -10,6 +10,7 @@ from datetime import datetime
 from messages import data_to_messages, Message, MessageType, AesMode
 from pathlib import Path
 import os
+from random import randint
 
 import logging
 logging.basicConfig()
@@ -17,13 +18,13 @@ LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.DEBUG)
 
 def process_message(message: Message):
-  global other_public_key, session_key, send_socket, private_key
+  global other_public_key, session_key, send_socket, private_key, reciv_progressbar,\
+    reciv_percent_text, reciv_filename_text, received_file_content, received_filename,\
+    received_file_size
 
-  msg_type = message.type
-
-  if msg_type.value == MessageType.PUBLIC_KEY.value:
+  if message.type.value == MessageType.PUBLIC_KEY.value:
     other_public_key = RSA.import_key(message.data)
-    LOG.info('Received other public key')
+    LOG.info('Received PUBLIC_KEY message')
     if instance['name'] == 'A':
       encrypted_session_key = encrypt_session_key(session_key, other_public_key)
       LOG.info(f'Sending session key to B')
@@ -32,32 +33,53 @@ def process_message(message: Message):
       # Instances are connected
       change_connection_status_connected()
 
-  if msg_type.value == MessageType.SESSION_KEY.value:
+  if message.type.value == MessageType.SESSION_KEY.value:
+    LOG.debug('Received SESSION_KEY message')
     encrypted_session_key = message.data
     session_key = decrypt_session_key(encrypted_session_key, private_key)
     LOG.info(f'Received session key: {session_key}')
     change_connection_status_connected()
 
-  if msg_type.value == MessageType.MESSAGE.value:
+  if message.type.value == MessageType.MESSAGE.value:
+    LOG.debug('Received MESSAGE')
     global msg_tb
     decrypted_message = decrypt_message_data(message, session_key).decode()
     if decrypted_message:
       LOG.info(f'Received message: {decrypted_message}')
       append_message_to_textbox(instance['other'], decrypted_message)
 
-  if msg_type.value == MessageType.FILE_BEGIN.value:
-    global reciv_progressbar, reciv_percent_text, reciv_filename_text
+  if message.type.value == MessageType.FILE_BEGIN.value:
+    LOG.debug('Received FILE_BEGIN message')
     decrypted_text = decrypt_message_data(message, session_key).decode()
     if decrypted_text:
       LOG.info(f'Received file begin message: {decrypted_text}')
       try:
         split_text = decrypted_text.split(',')
-        filename = split_text[0]
-        file_size = int(split_text[1])
-        set_progressbar_percent(reciv_progressbar, reciv_percent_text, 0, file_size)
-        reciv_filename_text.value = filename
+        received_filename = split_text[0]
+        received_file_size = int(split_text[1])
+        set_progressbar_percent(reciv_progressbar, reciv_percent_text, 0, received_file_size)
+        reciv_filename_text.value = received_filename
+        received_file_content = bytes()
       except:
         LOG.error('File begin message is incorrect')
+
+  if message.type.value == MessageType.FILE_CHUNK.value:
+    LOG.debug('Received FILE_CHUNK message')
+    decrypted_chunk = decrypt_message_data(message, session_key)
+    received_file_content += decrypted_chunk
+    set_progressbar_percent(reciv_progressbar, reciv_percent_text, len(received_file_content), received_file_size)
+    if len(received_file_content) >= received_file_size:
+      LOG.info(f'Received all file bytes')
+      download_path = Path('./download')
+      download_path.mkdir(exist_ok=True)
+      file_path = download_path/received_filename
+      if file_path.is_file():
+        random_numbers = ''.join([str(randint(0, 9)) for _ in range(10)])
+        altered_filename = f'{received_filename}_{random_numbers}'
+        file_path = download_path/altered_filename
+      with open(file_path, 'wb') as file:
+        file.write(received_file_content)
+
 
 def process_receive_queue():
   global receive_queue
@@ -102,6 +124,7 @@ def send_file(filename: str, content: bytes):
   global send_file_button, send_progressbar, send_filename_text, send_percent_text,\
     send_socket, aes_mode_combo, session_key
   send_file_button.disable()
+  LOG.info(f'Sending file: {filename}, size: {len(content)} bytes')
 
   send_filename_text.value = filename
 
@@ -109,6 +132,7 @@ def send_file(filename: str, content: bytes):
   mode = AesMode.CBC if aes_mode_combo.value == 'CBC' else AesMode.ECB
   encrypted_file_info = encrypt_message_data(file_info.encode(), session_key, mode)
   file_begin_msg = Message(mode, MessageType.FILE_BEGIN, encrypted_file_info)
+  LOG.debug(f'Sending file begin message')
   send_socket.send_message(file_begin_msg.to_bytes())
 
   max_chunk_size = 4096
@@ -116,7 +140,12 @@ def send_file(filename: str, content: bytes):
   sent_data_size = 0
 
   while sent_data_size < file_size:
-    # TODO
+    chunk = content[sent_data_size:sent_data_size+max_chunk_size]
+    encrypted_chunk = encrypt_message_data(chunk, session_key, mode)
+    file_chunk_msg = Message(mode, MessageType.FILE_CHUNK, encrypted_chunk)
+    send_socket.send_message(file_chunk_msg.to_bytes())
+    LOG.debug(f'Sending file chunk. Encrypted chunk size: {len(encrypted_chunk)} bytes')
+
     sent_data_size += max_chunk_size
     set_progressbar_percent(send_progressbar, send_percent_text, sent_data_size, file_size)
 
@@ -196,7 +225,7 @@ def create_main_screen():
   send_percent_text = Text(send_pb_box, '0%', align='right')
   send_progressbar = Progressbar(send_pb_box.tk, orient='horizontal', length=130, mode='determinate')
   send_progressbar.pack()
-  open_downloads_button = PushButton(reciv_box, os.system, ('xdg-open ./download'), 'Folder', align='left')
+  open_downloads_button = PushButton(reciv_box, os.system, ['xdg-open ./download'], 'Folder', align='left')
   reciv_pb_box = Box(reciv_box, width='fill', height='fill', align='left', border=True)
   reciv_filename_text = Text(reciv_pb_box, '', align='top')
   reciv_percent_text = Text(reciv_pb_box, '0%', align='right')
